@@ -233,78 +233,49 @@ impl MapFile {
     }
 
     /// Defragments cluster groups.
-    /// Algorithm could be improved to reduce extra looping.
     /// I.E. check forwards every cluster from current until status changes,
     /// then group at once.
-    fn defrag(self) {
+    fn defrag(&mut self) {
         let mut new_map: Vec<MapCluster> = vec![];
-        let mut did_defrag = false;
-
-        // Until completely defragged.
-        while did_defrag {
-            did_defrag = false;
-
-            for current_cluster in self.map.iter() {
-                // Find the trailing cluster of current.
-                let trailing_cluster = self.map.iter()
-                    .filter_map(|c| {
-                        if c.domain.start == current_cluster.domain.end {
-                            Some(c)
-                        } else {
-                            None
-                        }
-                    })
-                    .nth(0);
-
-                // If a cluster was found to be trailing 
-                // (current cluster isn't the ending cluster)
-                if trailing_cluster.is_some() {
-                    let trailing_cluster = trailing_cluster.unwrap();
-
-                    // Share common status; Defrag clusters.
-                    if trailing_cluster.status == current_cluster.status {
-                        // Create cluster encompassing both.
-                        new_map.push(MapCluster {
-                            domain: Domain {
-                                start: current_cluster.domain.start,
-                                end: trailing_cluster.domain.end,
-                            },
-                            status: current_cluster.status.to_owned(),
-                        });
-                        did_defrag = true;
-                    } else {
-                        // Otherwise, can't defrag this portion.
-                        // Transfer current cluster to new_map
-                        new_map.push(current_cluster.to_owned());
-                    }
-                }
-            }
-        }
-    }
-
-    fn defrag_new(self) {
-        let mut new_map: Vec<MapCluster> = vec![];
-
-        // ENSURE TO SORT OLD MAP IN ORDER OF SECTOR SEQUENCE
-
-        let old_map = self.map.iter().enumerate();
 
         let mut pos: usize = 0;
-        let end = old_map.last().unwrap().0;
 
-        let new_map: Vec<MapCluster> = old_map
-            .filter(|(index, cluster)| {
-                if index < &pos {
-                    return None
-                }
+        // Fetch first cluster.
+        let mut start_cluster = *self.map.iter()
+            .find(|c| c.domain.start == pos)
+            .unwrap();
+        // Even though this would be initialized by its first read,
+        // the compiler won't stop whining, and idk how to assert that to it.
+        let mut end_cluster = MapCluster::default();
+        let mut new_cluster: MapCluster;
 
-                if old_map.nth(pos + 1).map(|(_, c)| c.status == cluster.status)? {
+        let mut status_common: bool;
 
-                }
+        while pos < self.domain.end {
+            status_common = true;
 
-                Some(**cluster)
-            })
-            .map(|(_, c)| *c)
-            .collect();
+            // Start a new cluster based on the cluster following
+            // the end of last new_cluster.
+            new_cluster = start_cluster;
+
+            // While status is common, find each trailing cluster.
+            while status_common {
+                // start_cluster was of common status to end_cluster.
+                end_cluster = start_cluster;
+
+                start_cluster = *self.map.iter()
+                    .find(|c| end_cluster.domain.end == c.domain.start)
+                    .unwrap();
+
+                status_common = new_cluster.status == start_cluster.status
+            }
+
+            // Set the new ending, encapsulating any clusters of common status.
+            new_cluster.domain.end = end_cluster.domain.end;
+            pos = new_cluster.domain.end;
+            new_map.push(new_cluster);
+        }
+
+        self.map = new_map;
     }
 }
