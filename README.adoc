@@ -1,0 +1,40 @@
+= kramer
+:toc:
+
+// Hello people reading the README source :)
+
+== Prelude
+
+I needed a program to efficiently repair the data on optical discs.
+
+
+== Goals
+
+* [ ] CLI Args
+** [ ] Input device
+** [ ] Output file (ISO 9660)
+** [ ] Repair map file
+** [ ] sequence_length
+** [ ] brute_passes
+** [ ] Sector size override?
+
+* Repair Algorithm
+** Stage 1: Trial
+*** [ ] 1 - From first sector, parse forward to error.
+*** [ ] 2 - From last sector, parse backwards to error.
+*** [ ] 3 - From center of data for trial, parse forward to error or end of remaining trial domain.
+*** [ ] 4 - Stripe-skip remaining data, attempting to read largest trial domains first.
+**** [ ] If data keeps reading good, no skip will occur until an error is reached.
+** Stage 2: Isolation
+*** [ ] From largest to smallest untrustworthy sequence, attempt to read each sequence at half sequence_length.
+*** [ ] Same, but at quarter sequence_length.
+*** [ ] Same, but at eighth sequence_length.
+*** [ ] By sector, parse untrustworthy sequences from start to error, and end to error. Mark mid section for brute force.
+** Stage 3: Brute Force
+*** [ ] Desperately attempt to recover data from marked sections.
+*** [ ] Attempt for brute_passes, retrying all failed sectors.
+
+* [ ] Repair Map
+** [ ] I'll figure out some kind of language for this...
+
+== License
