@@ -71,7 +71,7 @@ impl From<Cluster> for MapCluster {
 }
 
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, PartialOrd)]
 pub enum Status {
     Untested,
     ForIsolation(u8),
@@ -191,32 +191,20 @@ impl MapFile {
     /// Get current recovery status.
     pub fn get_state(self) -> Status {
         let mut recover_status = Status::Damaged;
-        let mut cluster_stage: Option<u8> = Option::None;
 
         for cluster in self.map {
             match cluster.status {
                 Status::Untested => return Status::Untested,
-                Status::ForIsolation(cs) => {
-                    if recover_status == Status::Damaged {
-                        recover_status = cluster.status;
-                    } else {
-                        cluster_stage = Some(cs);
+                Status::ForIsolation(_) => {
+                    if recover_status == Status::Damaged
+                    || cluster.status < recover_status {
+                        // Note that recover_status after first condition is 
+                        // only ever Status::ForIsolation(_), thus PartialEq,
+                        // PartialOrd are useful for comparing the internal value.
+                        recover_status = cluster.status
                     }
                 },
                 Status::Damaged => (),
-            }
-
-            if cluster_stage.is_some() {
-                let recover_stage = match recover_status {
-                    Status::ForIsolation(rs) => rs,
-                    _ => unreachable!(),
-                };
-
-                if cluster_stage.unwrap() < recover_stage {
-                    recover_status = cluster.status
-                }
-
-                cluster_stage = None
             }
         }
 
