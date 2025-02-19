@@ -5,18 +5,19 @@
 
 == Prelude
 
-I needed a program to efficiently repair the data on optical discs.
+VERY EARLY ALPHA -- NOT YET FUNCTIONAL
 
+I needed a program to efficiently repair the data on optical discs.
 
 == Goals
 
-* [ ] CLI Args
-** [ ] Input device
-** [ ] Output file (ISO 9660)
-** [ ] Repair map file
-** [ ] sequence_length
-** [ ] brute_passes
-** [ ] Sector size override?
+* [*] CLI Args
+** [*] Input device
+** [*] Output file (ISO 9660)
+** [*] Repair map file
+** [*] sequence_length
+** [*] brute_passes
+** [*] Sector size override?
 
 * Repair Algorithm
 ** Stage 1: Trial
