@@ -5,11 +5,10 @@ use std::{
 
 use crate::{
     Args,
-    mapping::{MapFile, Status},
+    mapping::{MapFile, Stage},
 };
 
 
-#[allow(unused)]
 #[derive(Debug)]
 pub struct Recover {
     buf_capacity: usize,
@@ -17,12 +16,13 @@ pub struct Recover {
     input: BufReader<File>,
     output: BufWriter<File>,
     map: MapFile,
-    stage: Status,
+    stage: Stage,
 }
 
-#[allow(dead_code)]
 impl Recover {
     pub fn new(config: Args, input: File, output: File, map: MapFile) -> Self {
+        let stage = map.get_stage();
+
         // Temporarily make buffer length one sector.
         let buf_capacity = config.sector_size as usize;
         let mut r = Recover {
@@ -37,7 +37,7 @@ impl Recover {
                 output,
             ),
             map,
-            stage: Status::Untested,
+            stage: stage,
         };
 
         // Ensure that buffer capacity is adjusted based on progress.

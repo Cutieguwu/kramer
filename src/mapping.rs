@@ -27,12 +27,11 @@ impl Domain {
 }
 
 /// A map for data stored in memory for processing and saving to disk.
-#[allow(unused)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct Cluster {
     data: Option<Vec<u8>>,
     domain: Domain,
-    status: Status,
+    stage: Stage,
 }
 
 impl Default for Cluster {
@@ -40,7 +39,7 @@ impl Default for Cluster {
         Cluster {
             data: None,
             domain: Domain::default(),
-            status: Status::default()
+            stage: Stage::default()
         }
     }
 }
@@ -52,12 +51,12 @@ impl Default for Cluster {
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub struct MapCluster {
     pub domain: Domain,
-    pub status: Status,
+    pub stage: Stage,
 }
 
 impl Default for MapCluster {
     fn default() -> Self {
-        MapCluster { domain: Domain::default(), status: Status::default() }
+        MapCluster { domain: Domain::default(), stage: Stage::default() }
     }
 }
 
@@ -65,27 +64,26 @@ impl From<Cluster> for MapCluster {
     fn from(cluster: Cluster) -> Self {
         MapCluster {
             domain: cluster.domain,
-            status: cluster.status,
+            stage: cluster.stage,
         }
     }
 }
 
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, PartialOrd)]
-pub enum Status {
+pub enum Stage {
     Untested,
     ForIsolation(u8),
     Damaged,
 }
 
-impl Default for Status {
+impl Default for Stage {
     fn default() -> Self {
-        Status::Untested
+        Stage::Untested
     }
 }
 
 
-#[allow(unused)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct MapFile {
     pub sector_size: u16,
@@ -108,13 +106,12 @@ impl Default for MapFile {
             domain: Domain::default(),
             map: vec![MapCluster {
                 domain: Domain::default(),
-                status: Status::Untested,
+                stage: Stage::Untested,
             }],
         }
     }
 }
 
-#[allow(dead_code)]
 impl MapFile {
     pub fn new(sector_size: u16) -> Self {
         MapFile::default()
@@ -128,13 +125,13 @@ impl MapFile {
     }
 
     /// Recalculate cluster mappings.
-    fn update(self, new_cluster: Cluster) {
+    fn update(&mut self, new_cluster: Cluster) {
         let mut new_map: Vec<MapCluster> = vec![MapCluster::from(new_cluster.to_owned())];
 
         for map_cluster in self.map.iter() {
             let mut map_cluster = *map_cluster;
 
-            // If new_cluster doesn't start ahead and end short, map_cluster is forgotten.
+            // If new_cluster doesn't start ahead and ends short, map_cluster is forgotten.
             if new_cluster.domain.start < map_cluster.domain.start 
             && new_cluster.domain.end < map_cluster.domain.end {
                 /* 
@@ -173,7 +170,7 @@ impl MapFile {
                             start: new_cluster.domain.end,
                             end: domain_end,
                         },
-                        status: map_cluster.status.to_owned()
+                        stage: map_cluster.stage.to_owned()
                     });
                 }
             } else {
@@ -186,44 +183,46 @@ impl MapFile {
                 new_map.push(map_cluster);
             }
         }
+
+        self.map = new_map;
     }
 
-    /// Get current recovery status.
-    pub fn get_state(self) -> Status {
-        let mut recover_status = Status::Damaged;
+    /// Get current recovery stage.
+    pub fn get_stage(&self) -> Stage {
+        let mut recover_stage = Stage::Damaged;
 
-        for cluster in self.map {
-            match cluster.status {
-                Status::Untested => return Status::Untested,
-                Status::ForIsolation(_) => {
-                    if recover_status == Status::Damaged
-                    || cluster.status < recover_status {
-                        // Note that recover_status after first condition is 
-                        // only ever Status::ForIsolation(_), thus PartialEq,
+        for cluster in self.map.iter() {
+            match cluster.stage {
+                Stage::Untested => return Stage::Untested,
+                Stage::ForIsolation(_) => {
+                    if recover_stage == Stage::Damaged
+                    || cluster.stage < recover_stage {
+                        // Note that recover_stage after first condition is 
+                        // only ever Stage::ForIsolation(_), thus PartialEq,
                         // PartialOrd are useful for comparing the internal value.
-                        recover_status = cluster.status
+                        recover_stage = cluster.stage
                     }
                 },
-                Status::Damaged => (),
+                Stage::Damaged => (),
             }
         }
 
-        recover_status
+        recover_stage
     }
 
-    /// Get clusters of common status.
-    pub fn get_clusters(self, state: Status) -> Vec<MapCluster> {
+    /// Get clusters of common stage.
+    pub fn get_clusters(self, stage: Stage) -> Vec<MapCluster> {
         self.map.iter()
             .filter_map(|mc| {
-                if mc.status == state { Some(mc.to_owned()) } else { None }
+                if mc.stage == stage { Some(mc.to_owned()) } else { None }
             })
             .collect()
     }
 
     /// Defragments cluster groups.
-    /// I.E. check forwards every cluster from current until status changes,
+    /// I.E. check forwards every cluster from current until stage changes,
     /// then group at once.
-    fn defrag(&mut self) {
+    fn defrag(&mut self) -> &mut Self {
         let mut new_map: Vec<MapCluster> = vec![];
 
         let mut pos: usize = 0;
@@ -237,33 +236,34 @@ impl MapFile {
         let mut end_cluster = MapCluster::default();
         let mut new_cluster: MapCluster;
 
-        let mut status_common: bool;
+        let mut stage_common: bool;
 
         while pos < self.domain.end {
-            status_common = true;
+            stage_common = true;
 
             // Start a new cluster based on the cluster following
             // the end of last new_cluster.
             new_cluster = start_cluster;
 
-            // While status is common, find each trailing cluster.
-            while status_common {
-                // start_cluster was of common status to end_cluster.
+            // While stage is common, find each trailing cluster.
+            while stage_common {
+                // start_cluster was of common stage to end_cluster.
                 end_cluster = start_cluster;
 
                 start_cluster = *self.map.iter()
                     .find(|c| end_cluster.domain.end == c.domain.start)
                     .unwrap();
 
-                status_common = new_cluster.status == start_cluster.status
+                stage_common = new_cluster.stage == start_cluster.stage
             }
 
-            // Set the new ending, encapsulating any clusters of common status.
+            // Set the new ending, encapsulating any clusters of common stage.
             new_cluster.domain.end = end_cluster.domain.end;
             pos = new_cluster.domain.end;
             new_map.push(new_cluster);
         }
 
         self.map = new_map;
+        self
     }
 }

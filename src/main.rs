@@ -20,15 +20,15 @@ const FB_SECTOR_SIZE: u16 = 2048;
 struct Args {
     /// Path to source file or block device
     #[arg(short, long, value_hint = clap::ValueHint::DirPath)]
-    input_file: PathBuf,
+    input: PathBuf,
 
-    /// Path to output file. Defaults to {input_file}.iso
+    /// Path to output file. Defaults to {input}.iso
     #[arg(short, long, value_hint = clap::ValueHint::DirPath)]
-    output_file: Option<PathBuf>,
+    output: Option<PathBuf>,
 
-    /// Path to rescue map. Defaults to {input_file}.map
+    /// Path to rescue map. Defaults to {input}.map
     #[arg(short, long, value_hint = clap::ValueHint::DirPath)]
-    map_file: Option<PathBuf>,
+    map: Option<PathBuf>,
 
     /// Max number of consecutive sectors to test as a group
     #[arg(short, long, default_value_t = 128)]
@@ -51,25 +51,25 @@ fn main() {
     // I'm lazy and don't want to mess around with comparing error types.
     // Thus, any error in I/O here should be treated as fatal.
 
-    let mut input_file: File = {
+    let mut input: File = {
         match OpenOptions::new()
             .custom_flags(O_DIRECT)
             .read(true)
             .write(false)
             .append(false)
             .create(false)
-            .open(&config.input_file.as_path())
+            .open(&config.input.as_path())
         {
             Ok(f) => f,
             Err(err) => panic!("Failed to open input file: {:?}", err)
         }
     };
 
-    let mut output_file: File = {
+    let mut output: File = {
         // Keep this clean, make a short-lived binding.
         let path = get_path(
-            &config.output_file,
-            &config.input_file.to_str().unwrap(),
+            &config.output,
+            &config.input.to_str().unwrap(),
             "iso"
         );
 
@@ -88,21 +88,21 @@ fn main() {
     // Check if output file is shorter than input.
     // If so, autoextend the output file.
     {
-        let input_len = get_stream_length(&mut input_file)
+        let input_len = get_stream_length(&mut input)
             .expect("Failed to get the length of the input data.");
-        let output_len = get_stream_length(&mut output_file)
+        let output_len = get_stream_length(&mut output)
             .expect("Failed to get the length of the output file.");
 
         if output_len < input_len {
-            output_file.set_len(input_len)
+            output.set_len(input_len)
                 .expect("Failed to autofill output file.")
         }
     }
 
     let map: MapFile = {
         let path = get_path(
-            &config.output_file,
-            &config.input_file.to_str().unwrap(),
+            &config.output,
+            &config.input.to_str().unwrap(),
             "map"
         );
 
@@ -122,7 +122,7 @@ fn main() {
         }
     };
 
-    let recover_tool  = Recover::new(config, input_file, output_file, map);
+    let recover_tool  = Recover::new(config, input, output, map);
 
     recover_tool.run_full();
 
@@ -130,18 +130,18 @@ fn main() {
 }
 
 /// Generates a file path if one not provided.
-/// source_file for fallback name.
+/// source_name for fallback name.
 fn get_path(
-    output_file: &Option<PathBuf>,
-    source_file: &str,
+    output: &Option<PathBuf>,
+    source_name: &str,
     extention: &str
 ) -> PathBuf {
-    if let Some(f) = output_file {
+    if let Some(f) = output {
         f.to_owned()
     } else {
         PathBuf::from(format!(
             "{:?}.{}",
-            source_file,
+            source_name,
             extention,
         ))
         .as_path()
