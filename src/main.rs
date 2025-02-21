@@ -122,9 +122,9 @@ fn main() {
         }
     };
 
-    let recover_tool  = Recover::new(config, input, output, map);
+    let mut recover_tool  = Recover::new(config, input, output, map);
 
-    recover_tool.run_full();
+    recover_tool.run();
 
     todo!("Recovery, Map saving, and closure of all files.");
 }
@@ -152,10 +152,25 @@ fn get_path(
 /// Get length of data stream.
 /// Physical length of data stream in bytes
 /// (multiple of sector_size, rather than actual).
-fn get_stream_length<S: Seek>(file: &mut S) -> io::Result<u64> {
-    let len = file.seek(SeekFrom::End(0))?;
+fn get_stream_length<S: Seek>(input: &mut S) -> io::Result<u64> {
+    let len = input.seek(SeekFrom::End(0))?;
 
-    let _ = file.seek(SeekFrom::Start(0));
+    let _ = input.seek(SeekFrom::Start(0));
 
     Ok(len)
+}
+
+
+#[cfg(test)]
+#[allow(unused)]
+mod tests {
+    use super::*;
+
+    // Test for get_path
+    // Need to determine how to package files to test with, or at least
+    // how to test with PathBuf present.
+    // Test must also check unwrapping of file name, not just generation.
+
+    // Test for get_stream_length
+    // Need to determine how to test with Seek-able objects.
 }

@@ -69,6 +69,37 @@ impl From<Cluster> for MapCluster {
     }
 }
 
+impl MapCluster {
+    /// Breaks apart into a vec of clusters,
+    /// each of cluster_size, excepting last.
+    pub fn subdivide(&mut self, cluster_len: usize) -> Vec<MapCluster> {
+        let domain_len = self.domain.len();
+        let mut start = self.domain.start;
+        let mut clusters: Vec<MapCluster> = vec![];
+
+        for _ in 0..(domain_len as f64 / cluster_len as f64).floor() as usize {
+            clusters.push(MapCluster {
+                domain: Domain {
+                    start: start,
+                    end: start + cluster_len,
+                },
+                stage: self.stage,
+            });
+
+            start += cluster_len;
+        }
+
+        clusters.push(MapCluster {
+            domain: Domain {
+                start: start,
+                end: self.domain.end,
+            },
+            stage: self.stage,
+        });
+
+        clusters
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, PartialOrd)]
 pub enum Stage {
@@ -125,7 +156,7 @@ impl MapFile {
     }
 
     /// Recalculate cluster mappings.
-    fn update(&mut self, new_cluster: Cluster) {
+    fn update(&mut self, new_cluster: Cluster) -> &mut Self {
         let mut new_map: Vec<MapCluster> = vec![MapCluster::from(new_cluster.to_owned())];
 
         for map_cluster in self.map.iter() {
@@ -185,6 +216,7 @@ impl MapFile {
         }
 
         self.map = new_map;
+        self
     }
 
     /// Get current recovery stage.
@@ -266,4 +298,21 @@ impl MapFile {
         self.map = new_map;
         self
     }
+}
+
+
+#[cfg(test)]
+#[allow(unused)]
+mod tests {
+    use super::*;
+
+    // Test for MapCluster::subdivide()
+
+    // Test for MapFile::update()
+
+    // Test for MapFile::get_stage()
+
+    // Test for MapFile::get_clusters()
+
+    // Test for MapFile::defrag()
 }
