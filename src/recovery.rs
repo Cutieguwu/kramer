@@ -20,7 +20,12 @@ pub struct Recover {
 }
 
 impl Recover {
-    pub fn new(config: Args, input: File, output: File, map: MapFile) -> Self {
+    pub fn new(
+        config: Args,
+        input: File,
+        output: File,
+        map: MapFile,
+    ) -> Self {
         let stage = map.get_stage();
 
         // Temporarily make buffer length one sector.

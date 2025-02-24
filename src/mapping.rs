@@ -7,7 +7,7 @@ use crate::FB_SECTOR_SIZE;
 
 /// Domain, in sectors.
 /// Requires sector_size to be provided elsewhere for conversion to bytes.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 pub struct Domain {
     pub start: usize,
     pub end: usize,
@@ -25,6 +25,7 @@ impl Domain {
         self.end - self.start
     }
 }
+
 
 /// A map for data stored in memory for processing and saving to disk.
 #[derive(Clone, Debug, Deserialize)]
@@ -48,7 +49,7 @@ impl Default for Cluster {
 /// Map for data stored on disk.
 /// Rather have a second cluster type than inflating size
 /// of output map by defining Option::None constantly.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 pub struct MapCluster {
     pub domain: Domain,
     pub stage: Stage,
@@ -99,7 +100,13 @@ impl MapCluster {
 
         clusters
     }
+
+    pub fn set_stage(&mut self, stage: Stage) -> &mut Self {
+        self.stage = stage;
+        self
+    }
 }
+
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, PartialOrd)]
 pub enum Stage {
@@ -115,7 +122,7 @@ impl Default for Stage {
 }
 
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct MapFile {
     pub sector_size: u16,
     pub domain: Domain,
@@ -243,7 +250,7 @@ impl MapFile {
     }
 
     /// Get clusters of common stage.
-    pub fn get_clusters(self, stage: Stage) -> Vec<MapCluster> {
+    pub fn get_clusters(&self, stage: Stage) -> Vec<MapCluster> {
         self.map.iter()
             .filter_map(|mc| {
                 if mc.stage == stage { Some(mc.to_owned()) } else { None }
@@ -302,8 +309,9 @@ impl MapFile {
 
 
 #[cfg(test)]
-#[allow(unused)]
 mod tests {
+    use ron::Map;
+
     use super::*;
 
     // Test for MapCluster::subdivide()
@@ -311,8 +319,154 @@ mod tests {
     // Test for MapFile::update()
 
     // Test for MapFile::get_stage()
+    #[test]
+    fn test_get_stage() {
+        use std::vec;
+
+        let mut mf = MapFile::default();
+        let mut mf_stage = mf.get_stage();
+
+        // If this fails here, there's something SERIOUSLY wrong.
+        assert!(
+            mf_stage == Stage::Untested,
+            "Determined stage to be {:?}, when {:?} was expeccted.",
+            mf_stage, Stage::Untested
+        );
+
+
+        let stages = vec![
+            Stage::Damaged,
+            Stage::ForIsolation(1),
+            Stage::ForIsolation(0),
+            Stage::Untested,
+        ];
+
+        mf.map = vec![];
+
+        for stage in stages {
+            mf.map.push(*MapCluster::default().set_stage(stage));
+
+            mf_stage = mf.get_stage();
+
+            assert!(
+                stage == mf_stage,
+                "Expected stage to be {:?}, determined {:?} instead.",
+                stage, mf_stage
+            )
+        }
+    }
 
     // Test for MapFile::get_clusters()
+    #[test]
+    fn test_get_clusters() {
+        let mut mf = MapFile::default();
+
+        mf.map = vec![
+            *MapCluster::default().set_stage(Stage::Damaged),
+            *MapCluster::default().set_stage(Stage::ForIsolation(0)),
+            *MapCluster::default().set_stage(Stage::ForIsolation(1)),
+            MapCluster::default(),
+            MapCluster::default(),
+            *MapCluster::default().set_stage(Stage::ForIsolation(1)),
+            *MapCluster::default().set_stage(Stage::ForIsolation(0)),
+            *MapCluster::default().set_stage(Stage::Damaged),
+        ];
+
+        let stages = vec![
+            Stage::Damaged,
+            Stage::ForIsolation(1),
+            Stage::ForIsolation(0),
+            Stage::Untested,
+        ];
+
+        for stage in stages {
+            let expected = vec![
+                *MapCluster::default().set_stage(stage),
+                *MapCluster::default().set_stage(stage),
+            ];
+            let recieved = mf.get_clusters(stage);
+
+            assert!(
+                expected == recieved,
+                "Expected clusters {:?}, got {:?}.",
+                expected, recieved
+            )
+        }
+    }
 
     // Test for MapFile::defrag()
+    #[test]
+    fn test_defrag() {
+        let mut mf = MapFile {
+            sector_size: 1,
+            domain: Domain { start: 0, end: 8 },
+            map: vec![
+                MapCluster {
+                    domain: Domain { start: 0, end: 1 },
+                    stage: Stage::Untested,
+                },
+                MapCluster {
+                    domain: Domain { start: 1, end: 2 },
+                    stage: Stage::Untested,
+                },
+                MapCluster {
+                    domain: Domain { start: 2, end: 3 },
+                    stage: Stage::Untested,
+                },
+                MapCluster {
+                    domain: Domain { start: 3, end: 4 },
+                    stage: Stage::ForIsolation(0),
+                },
+                MapCluster {
+                    domain: Domain { start: 4, end: 5 },
+                    stage: Stage::ForIsolation(0),
+                },
+                MapCluster {
+                    domain: Domain { start: 5, end: 6 },
+                    stage: Stage::ForIsolation(1),
+                },
+                MapCluster {
+                    domain: Domain { start: 6, end: 7 },
+                    stage: Stage::ForIsolation(0),
+                },
+                MapCluster {
+                    domain: Domain { start: 7, end: 8 },
+                    stage: Stage::Damaged,
+                },
+            ],
+        };
+
+        let expected = vec![
+            MapCluster {
+                domain: Domain { start: 0, end: 3 },
+                stage: Stage::Untested,
+            },
+            MapCluster {
+                domain: Domain { start: 3, end: 5 },
+                stage: Stage::ForIsolation(0),
+            },
+            MapCluster {
+                domain: Domain { start: 5, end: 6 },
+                stage: Stage::ForIsolation(1),
+            },
+            MapCluster {
+                domain: Domain { start: 6, end: 7 },
+                stage: Stage::ForIsolation(0),
+            },
+            MapCluster {
+                domain: Domain { start: 7, end: 8 },
+                stage: Stage::Damaged,
+            },
+        ];
+
+        mf.defrag();
+
+        let recieved = mf.map;
+
+        assert!(
+            expected == recieved,
+            "Expected {:?} after defragging, got {:?}.",
+            expected, recieved
+        )
+    }
 }
