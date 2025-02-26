@@ -20,7 +20,12 @@ pub struct Recover {
 }
 
 impl Recover {
-    pub fn new(config: Args, input: File, output: File, map: MapFile) -> Self {
+    pub fn new(
+        config: Args,
+        input: File,
+        output: File,
+        map: MapFile,
+    ) -> Self {
         let stage = map.get_stage();
 
         // Temporarily make buffer length one sector.
@@ -46,20 +51,30 @@ impl Recover {
     }
 
     /// Recover media from blank slate.
-    pub fn run_full(self) {}
-
-    /// Recover media given a partial recovery.
-    pub fn run_limited(self) {}
+    pub fn run(&mut self) -> &mut Self {
+        self
+    }
 
     /// Attempt to copy all untested blocks.
-    fn copy_untested(self) {
-        
+    fn copy_untested(&mut self) -> &mut Self {
+
+        self
     }
 
     /// Set buffer capacities as cluster length in bytes.
     /// Varies depending on the recovery stage.
-    fn set_buf_capacity(&mut self) {
+    fn set_buf_capacity(&mut self) -> &mut Self {
         self.buf_capacity = (self.config.sector_size * self.config.cluster_length) as usize;
+
+        self
     }
 }
 
+
+#[cfg(test)]
+#[allow(unused)]
+mod tests {
+    use super::*;
+
+    // Test for Recover::set_buf_capacity
+}
