@@ -264,41 +264,44 @@ impl MapFile {
     fn defrag(&mut self) -> &mut Self {
         let mut new_map: Vec<MapCluster> = vec![];
 
-        let mut pos: usize = 0;
-
         // Fetch first cluster.
         let mut start_cluster = *self.map.iter()
-            .find(|c| c.domain.start == pos)
+            .find(|c| c.domain.start == 0)
             .unwrap();
+        
         // Even though this would be initialized by its first read,
         // the compiler won't stop whining, and idk how to assert that to it.
         let mut end_cluster = MapCluster::default();
         let mut new_cluster: MapCluster;
 
         let mut stage_common: bool;
+        let mut is_finished = false;
 
-        while pos < self.domain.end {
+        while !is_finished {
             stage_common = true;
 
             // Start a new cluster based on the cluster following
             // the end of last new_cluster.
             new_cluster = start_cluster;
 
-            // While stage is common, find each trailing cluster.
-            while stage_common {
-                // start_cluster was of common stage to end_cluster.
+            // While stage is common, and not finished,
+            // find each trailing cluster.
+            while stage_common && !is_finished {
                 end_cluster = start_cluster;
 
-                start_cluster = *self.map.iter()
-                    .find(|c| end_cluster.domain.end == c.domain.start)
-                    .unwrap();
+                if end_cluster.domain.end != self.domain.end {
+                    start_cluster = *self.map.iter()
+                        .find(|c| end_cluster.domain.end == c.domain.start)
+                        .unwrap();
 
-                stage_common = new_cluster.stage == start_cluster.stage
+                    stage_common = new_cluster.stage == start_cluster.stage
+                } else {
+                    is_finished = true;
+                }
             }
 
             // Set the new ending, encapsulating any clusters of common stage.
             new_cluster.domain.end = end_cluster.domain.end;
-            pos = new_cluster.domain.end;
             new_map.push(new_cluster);
         }
 
@@ -310,8 +313,6 @@ impl MapFile {
 
 #[cfg(test)]
 mod tests {
-    use ron::Map;
-
     use super::*;
 
     // Test for MapCluster::subdivide()
