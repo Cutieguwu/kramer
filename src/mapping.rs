@@ -28,9 +28,8 @@ impl Domain {
 
 
 /// A map for data stored in memory for processing and saving to disk.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 pub struct Cluster {
-    data: Option<Vec<u8>>,
     domain: Domain,
     stage: Stage,
 }
@@ -38,50 +37,24 @@ pub struct Cluster {
 impl Default for Cluster {
     fn default() -> Self {
         Cluster {
-            data: None,
             domain: Domain::default(),
             stage: Stage::default()
         }
     }
 }
 
-
-/// Map for data stored on disk.
-/// Rather have a second cluster type than inflating size
-/// of output map by defining Option::None constantly.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-pub struct MapCluster {
-    pub domain: Domain,
-    pub stage: Stage,
-}
-
-impl Default for MapCluster {
-    fn default() -> Self {
-        MapCluster { domain: Domain::default(), stage: Stage::default() }
-    }
-}
-
-impl From<Cluster> for MapCluster {
-    fn from(cluster: Cluster) -> Self {
-        MapCluster {
-            domain: cluster.domain,
-            stage: cluster.stage,
-        }
-    }
-}
-
-impl MapCluster {
+impl Cluster {
     /// Breaks apart into a vec of clusters,
     /// each of cluster_size, excepting last.
-    pub fn subdivide(&mut self, cluster_len: usize) -> Vec<MapCluster> {
+    pub fn subdivide(&mut self, cluster_len: usize) -> Vec<Cluster> {
         let domain_len = self.domain.len();
         let mut start = self.domain.start;
-        let mut clusters: Vec<MapCluster> = vec![];
+        let mut clusters: Vec<Cluster> = vec![];
 
         for _ in 0..(domain_len as f64 / cluster_len as f64).floor() as usize {
-            clusters.push(MapCluster {
+            clusters.push(Cluster {
                 domain: Domain {
-                    start: start,
+                    start,
                     end: start + cluster_len,
                 },
                 stage: self.stage,
@@ -90,9 +63,9 @@ impl MapCluster {
             start += cluster_len;
         }
 
-        clusters.push(MapCluster {
+        clusters.push(Cluster {
             domain: Domain {
-                start: start,
+                start,
                 end: self.domain.end,
             },
             stage: self.stage,
@@ -126,7 +99,7 @@ impl Default for Stage {
 pub struct MapFile {
     pub sector_size: u16,
     pub domain: Domain,
-    pub map: Vec<MapCluster>,
+    pub map: Vec<Cluster>,
 }
 
 impl TryFrom<File> for MapFile {
@@ -142,7 +115,7 @@ impl Default for MapFile {
         MapFile {
             sector_size: FB_SECTOR_SIZE,
             domain: Domain::default(),
-            map: vec![MapCluster {
+            map: vec![Cluster {
                 domain: Domain::default(),
                 stage: Stage::Untested,
             }],
@@ -164,7 +137,7 @@ impl MapFile {
 
     /// Recalculate cluster mappings.
     fn update(&mut self, new_cluster: Cluster) -> &mut Self {
-        let mut new_map: Vec<MapCluster> = vec![MapCluster::from(new_cluster.to_owned())];
+        let mut new_map: Vec<Cluster> = vec![Cluster::from(new_cluster.to_owned())];
 
         for map_cluster in self.map.iter() {
             let mut map_cluster = *map_cluster;
@@ -203,7 +176,7 @@ impl MapFile {
                     NOTE: Crop completed above.
                     */
 
-                    new_map.push(MapCluster {
+                    new_map.push(Cluster {
                         domain: Domain {
                             start: new_cluster.domain.end,
                             end: domain_end,
@@ -250,7 +223,7 @@ impl MapFile {
     }
 
     /// Get clusters of common stage.
-    pub fn get_clusters(&self, stage: Stage) -> Vec<MapCluster> {
+    pub fn get_clusters(&self, stage: Stage) -> Vec<Cluster> {
         self.map.iter()
             .filter_map(|mc| {
                 if mc.stage == stage { Some(mc.to_owned()) } else { None }
@@ -262,17 +235,17 @@ impl MapFile {
     /// I.E. check forwards every cluster from current until stage changes,
     /// then group at once.
     fn defrag(&mut self) -> &mut Self {
-        let mut new_map: Vec<MapCluster> = vec![];
+        let mut new_map: Vec<Cluster> = vec![];
 
         // Fetch first cluster.
-        let mut start_cluster = *self.map.iter()
+        let mut start_cluster = self.map.iter()
             .find(|c| c.domain.start == 0)
             .unwrap();
         
         // Even though this would be initialized by its first read,
         // the compiler won't stop whining, and idk how to assert that to it.
-        let mut end_cluster = MapCluster::default();
-        let mut new_cluster: MapCluster;
+        let mut end_cluster = Cluster::default();
+        let mut new_cluster: Cluster;
 
         let mut stage_common: bool;
         let mut is_finished = false;
@@ -282,15 +255,15 @@ impl MapFile {
 
             // Start a new cluster based on the cluster following
             // the end of last new_cluster.
-            new_cluster = start_cluster;
+            new_cluster = start_cluster.to_owned();
 
             // While stage is common, and not finished,
             // find each trailing cluster.
             while stage_common && !is_finished {
-                end_cluster = start_cluster;
+                end_cluster = start_cluster.to_owned();
 
                 if end_cluster.domain.end != self.domain.end {
-                    start_cluster = *self.map.iter()
+                    start_cluster = self.map.iter()
                         .find(|c| end_cluster.domain.end == c.domain.start)
                         .unwrap();
 
@@ -315,7 +288,7 @@ impl MapFile {
 mod tests {
     use super::*;
 
-    // Test for MapCluster::subdivide()
+    // Test for Cluster::subdivide()
 
     // Test for MapFile::update()
 
@@ -345,7 +318,7 @@ mod tests {
         mf.map = vec![];
 
         for stage in stages {
-            mf.map.push(*MapCluster::default().set_stage(stage));
+            mf.map.push(*Cluster::default().set_stage(stage));
 
             mf_stage = mf.get_stage();
 
@@ -363,14 +336,14 @@ mod tests {
         let mut mf = MapFile::default();
 
         mf.map = vec![
-            *MapCluster::default().set_stage(Stage::Damaged),
-            *MapCluster::default().set_stage(Stage::ForIsolation(0)),
-            *MapCluster::default().set_stage(Stage::ForIsolation(1)),
-            MapCluster::default(),
-            MapCluster::default(),
-            *MapCluster::default().set_stage(Stage::ForIsolation(1)),
-            *MapCluster::default().set_stage(Stage::ForIsolation(0)),
-            *MapCluster::default().set_stage(Stage::Damaged),
+            *Cluster::default().set_stage(Stage::Damaged),
+            *Cluster::default().set_stage(Stage::ForIsolation(0)),
+            *Cluster::default().set_stage(Stage::ForIsolation(1)),
+            Cluster::default(),
+            Cluster::default(),
+            *Cluster::default().set_stage(Stage::ForIsolation(1)),
+            *Cluster::default().set_stage(Stage::ForIsolation(0)),
+            *Cluster::default().set_stage(Stage::Damaged),
         ];
 
         let stages = vec![
@@ -382,8 +355,8 @@ mod tests {
 
         for stage in stages {
             let expected = vec![
-                *MapCluster::default().set_stage(stage),
-                *MapCluster::default().set_stage(stage),
+                *Cluster::default().set_stage(stage),
+                *Cluster::default().set_stage(stage),
             ];
             let recieved = mf.get_clusters(stage);
 
@@ -402,35 +375,35 @@ mod tests {
             sector_size: 1,
             domain: Domain { start: 0, end: 8 },
             map: vec![
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 0, end: 1 },
                     stage: Stage::Untested,
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 1, end: 2 },
                     stage: Stage::Untested,
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 2, end: 3 },
                     stage: Stage::Untested,
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 3, end: 4 },
                     stage: Stage::ForIsolation(0),
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 4, end: 5 },
                     stage: Stage::ForIsolation(0),
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 5, end: 6 },
                     stage: Stage::ForIsolation(1),
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 6, end: 7 },
                     stage: Stage::ForIsolation(0),
                 },
-                MapCluster {
+                Cluster {
                     domain: Domain { start: 7, end: 8 },
                     stage: Stage::Damaged,
                 },
@@ -438,23 +411,23 @@ mod tests {
         };
 
         let expected = vec![
-            MapCluster {
+            Cluster {
                 domain: Domain { start: 0, end: 3 },
                 stage: Stage::Untested,
             },
-            MapCluster {
+            Cluster {
                 domain: Domain { start: 3, end: 5 },
                 stage: Stage::ForIsolation(0),
             },
-            MapCluster {
+            Cluster {
                 domain: Domain { start: 5, end: 6 },
                 stage: Stage::ForIsolation(1),
             },
-            MapCluster {
+            Cluster {
                 domain: Domain { start: 6, end: 7 },
                 stage: Stage::ForIsolation(0),
             },
-            MapCluster {
+            Cluster {
                 domain: Domain { start: 7, end: 8 },
                 stage: Stage::Damaged,
             },
