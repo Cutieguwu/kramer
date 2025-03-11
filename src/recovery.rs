@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     Args,
-    mapping::{MapFile, Stage},
+    mapping::{Cluster, MapFile, Stage},
 };
 
 
@@ -50,13 +50,43 @@ impl Recover {
         r
     }
 
-    /// Recover media from blank slate.
+    /// Recover media.
     pub fn run(&mut self) -> &mut Self {
+        let mut is_finished = false;
+
+        while !is_finished {
+            match self.map.get_stage() {
+                Stage::Untested => { self.copy_untested(); },
+                Stage::ForIsolation(level) => { self.copy_isolate(level); },
+                Stage::Damaged => {
+                    println!("Cannot recover further.");
+
+                    is_finished = true
+                },
+            }
+        }
+
         self
     }
 
     /// Attempt to copy all untested blocks.
     fn copy_untested(&mut self) -> &mut Self {
+
+        let mut untested: Vec<Cluster> = vec![];
+
+        for cluster in self.map.get_clusters(Stage::Untested).iter_mut() {
+            untested.append(&mut cluster.subdivide(self.map.sector_size as usize));
+        }
+
+        todo!("Read and save data.");
+
+        self
+    }
+
+    /// Attempt to copy blocks via isolation at pass level.
+    fn copy_isolate(&mut self, level: u8) -> &mut Self {
+
+        todo!();
 
         self
     }
